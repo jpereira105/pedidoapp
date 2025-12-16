@@ -1,27 +1,15 @@
-const express = require('express');
-const cors = require('cors');
-const app = express();
+import express from "express";
+import cors from "cors";
+import productsRouter from "./routes/products.js";
+import cartRouter from "./routes/cart.js";
 
+const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Aquí definís los datos en el backend
-let products = [
-  { id: 1, name: 'Café', price: 500 },
-  { id: 2, name: 'Té', price: 300 }
-];
+app.use("/products", productsRouter);
+app.use("/cart", cartRouter);
 
-let cart = [];
-
-// Endpoints
-app.get('/products', (req, res) => res.json(products));
-
-app.get('/cart', (req, res) => res.json(cart));
-
-app.post('/cart', (req, res) => {
-  cart.push(req.body); // { productId, quantity }
-  res.json(cart);
+app.listen(4000, () => {
+  console.log("API corriendo en http://localhost:4000");
 });
-
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`API running on port ${PORT}`));
