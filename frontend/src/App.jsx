@@ -7,6 +7,10 @@ function App() {
   const [cart, setCart] = useState({ items: [], total: 0 });
   const [error, setError] = useState(false);
 
+  // Estados para el formulario de producto
+  const [newName, setNewName] = useState("");
+  const [newPrice, setNewPrice] = useState("");
+
   // Traer productos
   useEffect(() => {
     fetch("http://localhost:4000/products")
@@ -21,7 +25,7 @@ function App() {
       });
   }, []);
 
-  // Actualizar título del navegador con el total del carrito
+  // Actualizar título del navegador con el total
   useEffect(() => {
     document.title = `🛒 Total: $${cart.total}`;
   }, [cart.total]);
@@ -37,6 +41,41 @@ function App() {
       .then(data => setCart(data))
       .catch(err => {
         console.error("Error al agregar al carrito:", err);
+        setError(true);
+      });
+  };
+
+  // Vaciar carrito
+  const clearCart = () => {
+    const confirmClear = window.confirm("¿Seguro que querés vaciar el carrito?");
+    if (!confirmClear) return;
+
+    fetch("http://localhost:4000/cart", { method: "DELETE" })
+      .then(res => res.json())
+      .then(data => setCart(data))
+      .catch(err => {
+        console.error("Error al vaciar carrito:", err);
+        setError(true);
+      });
+  };
+
+  // Agregar producto nuevo
+  const addProduct = (e) => {
+    e.preventDefault();
+
+    fetch("http://localhost:4000/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName, price: parseFloat(newPrice) })
+    })
+      .then(res => res.json())
+      .then(product => {
+        setProducts([...products, product]); // actualizar lista
+        setNewName("");
+        setNewPrice("");
+      })
+      .catch(err => {
+        console.error("Error al agregar producto:", err);
         setError(true);
       });
   };
@@ -59,6 +98,26 @@ function App() {
         </div>
       ))}
 
+      {/* Formulario para agregar producto */}
+      <h3>Agregar nuevo producto</h3>
+      <form onSubmit={addProduct}>
+        <input
+          type="text"
+          placeholder="Nombre"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          required
+        />
+        <input
+          type="number"
+          placeholder="Precio"
+          value={newPrice}
+          onChange={(e) => setNewPrice(e.target.value)}
+          required
+        />
+        <button type="submit">Guardar</button>
+      </form>
+
       <h2>Carrito</h2>
       {cart.items.map((c, i) => (
         <div key={i}>
@@ -66,6 +125,7 @@ function App() {
         </div>
       ))}
       <h3>Total: ${cart.total}</h3>
+      <button onClick={clearCart}>Vaciar carrito</button>
     </div>
   );
 }
