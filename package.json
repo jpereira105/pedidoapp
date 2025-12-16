@@ -1,0 +1,16 @@
+{
+  "name": "pedidoapp-backend",
+  "version": "1.0.0",
+  "description": "Backend de PedidoApp con Node.js y Express",
+  "main": "index.js",
+  "scripts": {
+    "start": "node backend/index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.2.1"
+  }
+}
