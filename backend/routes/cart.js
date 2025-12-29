@@ -1,48 +1,38 @@
-// routes/cart.js
-import { Router } from "express";
-import { products, cart, saveData, loadData } from "../data.js";
+// backend/routes/cart.js
+// insertar pedidos y detalles
 
-const router = Router();
+import express from "express";
+import pool from "../db.js";
 
-// GET /cart
-router.get("/", (req, res) => {
-  const total = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  res.json({ items: cart, total });
-});
+const router = express.Router();
 
-// POST /cart
-router.post("/", (req, res) => {
-  const { productId, quantity } = req.body;
-  const product = products.find(p => p.id === productId);
+// Crear un nuevo pedido con detalle
+router.post("/", async (req, res) => {
+  const { id_cliente, items } = req.body;
+  // items = [{codigo_articulo, detalle_articulo, cantidad}, ...]
 
-  if (!product) {
-    return res.status(404).json({ error: "Producto no encontrado" });
+  try {
+    // Insertar cabecera
+    const pedido = await pool.query(
+      "INSERT INTO pedidos (id_cliente) VALUES ($1) RETURNING numcab",
+      [id_cliente]
+    );
+
+    const numcab = pedido.rows[0].numcab;
+
+    // Insertar detalle
+    for (const item of items) {
+      await pool.query(
+        "INSERT INTO detalle_pedido (numcab, codigo_articulo, detalle_articulo, cantidad) VALUES ($1, $2, $3, $4)",
+        [numcab, item.codigo_articulo, item.detalle_articulo, item.cantidad]
+      );
+    }
+
+    res.json({ mensaje: "Pedido creado", numcab });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error al crear pedido" });
   }
-
-  const existingItem = cart.find(item => item.productId === productId);
-
-  if (existingItem) {
-    existingItem.quantity += quantity;
-  } else {
-    cart.push({
-      productId: product.id,
-      name: product.name,
-      price: product.price,
-      quantity
-    });
-  }
-
-  saveData({ products, cart }); // guardar cambios
-
-  const total = cart.reduce((acc, item) => acc + item.price * item.quantity, 0);
-  res.json({ items: cart, total });
-});
-
-// DELETE /cart
-router.delete("/", (req, res) => {
-  cart.length = 0;
-  saveData({ products, cart }); // guardar cambios
-  res.json({ items: cart, total: 0 });
 });
 
 export default router;

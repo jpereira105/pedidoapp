@@ -1,3 +1,6 @@
+// backend/index.js
+// los routers usan la base Supabase
+
 import express from "express";
 import cors from "cors";
 import productsRouter from "./routes/products.js";
@@ -10,6 +13,7 @@ app.use(express.json());
 app.use("/products", productsRouter);
 app.use("/cart", cartRouter);
 
-app.listen(4000, () => {
-  console.log("API corriendo en http://localhost:4000");
+const PORT = process.env.PORT || 4000;
+app.listen(PORT, () => {
+  console.log(`API corriendo en http://localhost:${PORT}`);
 });

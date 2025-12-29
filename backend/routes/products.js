@@ -1,33 +1,18 @@
-//routes/products.js
+// backend/routes/products.js
+import express from "express";
+import pool from "../db.js";
 
-import { Router } from "express";
-import { products, cart, saveData } from "../data.js";
+const router = express.Router();
 
-const router = Router();
-
-// GET /products → lista de productos
-router.get("/", (req, res) => {
-  res.json(products);
-});
-
-// POST /products → agregar nuevo producto
-router.post("/", (req, res) => {
-  const { name, price } = req.body;
-
-  if (!name || !price) {
-    return res.status(400).json({ error: "Faltan campos: name y price" });
+// Obtener todos los artículos
+router.get("/", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM articulos");
+    res.json(result.rows);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Error al obtener artículos" });
   }
-
-  const newProduct = {
-    id: products.length > 0 ? products[products.length - 1].id + 1 : 1,
-    name,
-    price
-  };
-
-  products.push(newProduct);
-  saveData({ products, cart }); // persistir en data.json
-
-  res.status(201).json(newProduct);
 });
 
 export default router;
