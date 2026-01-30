@@ -1,5 +1,4 @@
 // src/app.jsx
-
 import { useState, useEffect } from "react";
 
 function App() {
@@ -10,49 +9,46 @@ function App() {
   useEffect(() => {
     fetch("http://localhost:4000/products")
       .then(res => res.json())
-      .then(data => setProductos(data))
+      .then(data => {
+        console.log("Productos:", data);
+        setProductos(data);
+      })
       .catch(err => console.error(err));
   }, []);
 
   // Crear pedido / agregar al carrito
   const addToCart = (producto) => {
+    const item = {
+      codigo_articulo: producto.codigo,
+      detalle_articulo: producto.detalle,
+      precio: producto.precio,
+      cantidad: 1
+    };
+
     if (!cart.numcab) {
-      // Primera vez: crear pedido
       fetch("http://localhost:4000/cart", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id_cliente: 1,
-          items: [{
-            codigo_articulo: producto.codigo,
-            detalle_articulo: producto.detalle,
-            precio: producto.precio,
-            cantidad: 1
-          }]
-        })
+        body: JSON.stringify({ id_cliente: 1, items: [item] })
       })
         .then(res => res.json())
-        .then(data => setCart(data));   // 👈 usar respuesta completa
+        .then(data => setCart(data))
+        .catch(err => console.error("Error creando pedido:", err));
     } else {
-      // Ya existe pedido: agregar ítem
       fetch(`http://localhost:4000/cart/${cart.numcab}/items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          codigo_articulo: producto.codigo,
-          detalle_articulo: producto.detalle,
-          precio: producto.precio,
-          cantidad: 1
-        })
+        body: JSON.stringify(item)
       })
         .then(res => res.json())
-        .then(data => setCart(data));   // 👈 usar respuesta completa
+        .then(data => setCart(data))
+        .catch(err => console.error("Error agregando ítem:", err));
     }
   };
 
   // Vaciar carrito
   const emptyCart = () => {
-    fetch("http://localhost:4000/cart", { method: "DELETE" })
+    fetch(`http://localhost:4000/cart/${cart.numcab}`, { method: "DELETE" })
       .then(res => res.json())
       .then(data => setCart(data))
       .catch(err => console.error(err));
@@ -89,20 +85,20 @@ function App() {
         <div>
           {cart.items.map(item => (
             <div key={item.codigo_articulo}>
-              <span>{item.detalle} - ${item.precio}</span>
+              <span>{item.detalle_articulo} - ${item.precio}</span>
               <div>
                 <button
                   onClick={() =>
-                    updateQuantity(cart.numcab, item.codigo_articulo, item.quantity - 1)
+                    updateQuantity(cart.numcab, item.codigo_articulo, item.cantidad - 1)
                   }
-                  disabled={item.quantity <= 1}
+                  disabled={item.cantidad <= 1}
                 >
                   -
                 </button>
-                <span>{item.quantity}</span>
+                <span>{item.cantidad}</span>
                 <button
                   onClick={() =>
-                    updateQuantity(cart.numcab, item.codigo_articulo, item.quantity + 1)
+                    updateQuantity(cart.numcab, item.codigo_articulo, item.cantidad + 1)
                   }
                 >
                   +
@@ -110,6 +106,7 @@ function App() {
               </div>
             </div>
           ))}
+          {/* 👇 fuera del map */}
           <h3>Total: ${cart.total}</h3>
           <button onClick={emptyCart}>Vaciar carrito</button>
         </div>
@@ -119,4 +116,3 @@ function App() {
 }
 
 export default App;
-
