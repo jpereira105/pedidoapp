@@ -21,25 +21,20 @@ router.post("/", async (req, res) => {
     );
     const numcab = pedido.rows[0].numcab;
 
-    console.log("Items recibidos:", items);
-
     for (const item of items) {
-      if (!item.codigo_articulo) {
-        throw new Error("Falta codigo_articulo en item");
-      }
       await pool.query(
         `INSERT INTO detalle_pedido 
-         (numcab, codigo_articulo, detalle_articulo, cantidad, precio) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [numcab, item.codigo_articulo, item.detalle_articulo, item.cantidad, item.precio]
+         (numcab, id_cliente, codigo_articulo, detalle_articulo, cantidad, precio) 
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [numcab, id_cliente, item.codigo_articulo, item.detalle_articulo, item.cantidad, item.precio]
       );
     }
 
     await pool.query("COMMIT");
 
     const detalles = await pool.query(
-      "SELECT codigo_articulo, detalle_articulo, precio, cantidad FROM detalle_pedido WHERE numcab=$1",
-      [numcab]
+      "SELECT codigo_articulo, detalle_articulo, precio, cantidad FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2",
+      [numcab, id_cliente]
     );
 
     const total = detalles.rows.reduce(
@@ -65,31 +60,31 @@ router.post("/", async (req, res) => {
 // Agregar ítem a pedido existente
 router.post("/:numcab/items", async (req, res) => {
   const { numcab } = req.params;
-  const { codigo_articulo, detalle_articulo, cantidad, precio } = req.body;
+  const { id_cliente, codigo_articulo, detalle_articulo, cantidad, precio } = req.body;
 
   try {
     const existing = await pool.query(
-      "SELECT * FROM detalle_pedido WHERE numcab=$1 AND codigo_articulo=$2",
-      [numcab, codigo_articulo]
+      "SELECT * FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2 AND codigo_articulo=$3",
+      [numcab, id_cliente, codigo_articulo]
     );
 
     if (existing.rows.length > 0) {
       await pool.query(
-        "UPDATE detalle_pedido SET cantidad = cantidad + $1 WHERE numcab=$2 AND codigo_articulo=$3",
-        [cantidad, numcab, codigo_articulo]
+        "UPDATE detalle_pedido SET cantidad = cantidad + $1 WHERE numcab=$2 AND id_cliente=$3 AND codigo_articulo=$4",
+        [cantidad, numcab, id_cliente, codigo_articulo]
       );
     } else {
       await pool.query(
         `INSERT INTO detalle_pedido 
-         (numcab, codigo_articulo, detalle_articulo, cantidad, precio) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [numcab, codigo_articulo, detalle_articulo, cantidad, precio]
+         (numcab, id_cliente, codigo_articulo, detalle_articulo, cantidad, precio) 
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [numcab, id_cliente, codigo_articulo, detalle_articulo, cantidad, precio]
       );
     }
 
     const detalles = await pool.query(
-      "SELECT codigo_articulo, detalle_articulo, precio, cantidad FROM detalle_pedido WHERE numcab=$1",
-      [numcab]
+      "SELECT codigo_articulo, detalle_articulo, precio, cantidad FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2",
+      [numcab, id_cliente]
     );
 
     const total = detalles.rows.reduce(
@@ -97,14 +92,14 @@ router.post("/:numcab/items", async (req, res) => {
       0
     );
 
-    const items = detalles.rows.map((row) => ({
+    const items = detalles.rows.map(row => ({
       codigo_articulo: row.codigo_articulo,
-      detalle_articulo: row.detalle_articulo,   // 👈 nombre consistente
+      detalle_articulo: row.detalle_articulo,
       precio: parseFloat(row.precio),
       cantidad: parseInt(row.cantidad, 10),
     }));
 
-    res.json({ mensaje: "Pedido creado", numcab, items, total });
+    res.json({ mensaje: "Pedido actualizado", numcab, items, total });
 
   } catch (error) {
     console.error(error);
@@ -112,12 +107,13 @@ router.post("/:numcab/items", async (req, res) => {
   }
 });
 
-// Vaciar carrito (elimina registros en DB)
+// Vaciar carrito
 router.delete("/:numcab", async (req, res) => {
   const { numcab } = req.params;
+  const { id_cliente } = req.body;
   try {
-    await pool.query("DELETE FROM detalle_pedido WHERE numcab=$1", [numcab]);
-    await pool.query("DELETE FROM pedidos WHERE numcab=$1", [numcab]);
+    await pool.query("DELETE FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2", [numcab, id_cliente]);
+    await pool.query("DELETE FROM pedidos WHERE numcab=$1 AND id_cliente=$2", [numcab, id_cliente]);
     res.json({ mensaje: "Carrito vaciado", numcab: null, items: [], total: 0 });
   } catch (error) {
     console.error(error);
@@ -128,7 +124,7 @@ router.delete("/:numcab", async (req, res) => {
 // Actualizar cantidad de un ítem
 router.put("/:numcab/:codigo_articulo", async (req, res) => {
   const { numcab, codigo_articulo } = req.params;
-  const { cantidad } = req.body;
+  const { id_cliente, cantidad } = req.body;
 
   if (!cantidad || isNaN(cantidad) || cantidad <= 0) {
     return res.status(400).json({ error: "Cantidad inválida" });
@@ -136,8 +132,8 @@ router.put("/:numcab/:codigo_articulo", async (req, res) => {
 
   try {
     const result = await pool.query(
-      "UPDATE detalle_pedido SET cantidad=$1 WHERE numcab=$2 AND codigo_articulo=$3 RETURNING *",
-      [cantidad, numcab, codigo_articulo]
+      "UPDATE detalle_pedido SET cantidad=$1 WHERE numcab=$2 AND id_cliente=$3 AND codigo_articulo=$4 RETURNING *",
+      [cantidad, numcab, id_cliente, codigo_articulo]
     );
 
     if (result.rows.length === 0) {
@@ -145,8 +141,8 @@ router.put("/:numcab/:codigo_articulo", async (req, res) => {
     }
 
     const detalles = await pool.query(
-      "SELECT codigo_articulo, detalle_articulo, precio, cantidad FROM detalle_pedido WHERE numcab=$1",
-      [numcab]
+      "SELECT codigo_articulo, detalle_articulo, precio, cantidad FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2",
+      [numcab, id_cliente]
     );
 
     const items = detalles.rows.map(row => ({
@@ -156,13 +152,9 @@ router.put("/:numcab/:codigo_articulo", async (req, res) => {
       cantidad: parseInt(row.cantidad, 10),
     }));
 
-    const total = items.reduce(
-      (acc, it) => acc + it.precio * it.cantidad,
-      0
-    );
+    const total = items.reduce((acc, it) => acc + it.precio * it.cantidad, 0);
 
     res.json({ mensaje: "OK", numcab, items, total });
-
 
   } catch (error) {
     console.error(error);

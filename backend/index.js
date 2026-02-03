@@ -22,8 +22,15 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Error interno del servidor" });
 });
 
-const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`API corriendo en http://localhost:${PORT}`);
-});
+// Solo levantar servidor si no estamos en modo test
+if (process.env.NODE_ENV !== "test") {
+  const PORT = process.env.PORT || 4000;
+  app.listen(PORT, () => {
+    console.log(`API corriendo en http://localhost:${PORT}`);
+  });
+}
+
+// 👉 Exportar la app para Supertest
+export default app;
+
 
