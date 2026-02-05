@@ -1,6 +1,7 @@
 // backend/routes/cart.js
 import express from "express";
 import pool from "../db.js";
+import { pgErrorHandler } from "../pgErrorHandler.js";
 
 const router = express.Router();
 
@@ -10,7 +11,7 @@ router.post("/", async (req, res) => {
 
   try {
     if (!Array.isArray(items) || items.length === 0) {
-      throw new Error("No se recibieron items para el pedido");
+      return res.status(400).json({ error: "No se recibieron items para el pedido" });
     }
 
     await pool.query("BEGIN");
@@ -52,8 +53,8 @@ router.post("/", async (req, res) => {
     res.json({ mensaje: "Pedido creado", numcab, items: carritoItems, total });
   } catch (error) {
     await pool.query("ROLLBACK");
-    console.error(error);
-    res.status(500).json({ error: "Error al crear pedido" });
+    console.error("DB Error:", error.code, error.detail); // 👈 logging limpio
+    pgErrorHandler(error, res);
   }
 });
 
@@ -100,10 +101,9 @@ router.post("/:numcab/items", async (req, res) => {
     }));
 
     res.json({ mensaje: "Pedido actualizado", numcab, items, total });
-
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al agregar artículo" });
+    console.error("DB Error:", error.code, error.detail); // 👈 logging limpio
+    pgErrorHandler(error, res);
   }
 });
 
@@ -111,13 +111,24 @@ router.post("/:numcab/items", async (req, res) => {
 router.delete("/:numcab", async (req, res) => {
   const { numcab } = req.params;
   const { id_cliente } = req.body;
+
   try {
+    const pedido = await pool.query(
+      "SELECT 1 FROM pedidos WHERE numcab=$1 AND id_cliente=$2",
+      [numcab, id_cliente]
+    );
+
+    if (pedido.rowCount === 0) {
+      return res.status(404).json({ error: "Pedido no encontrado" });
+    }
+
     await pool.query("DELETE FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2", [numcab, id_cliente]);
     await pool.query("DELETE FROM pedidos WHERE numcab=$1 AND id_cliente=$2", [numcab, id_cliente]);
+
     res.json({ mensaje: "Carrito vaciado", numcab: null, items: [], total: 0 });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al vaciar carrito" });
+    console.error("DB Error:", error.code, error.detail); // 👈 logging limpio
+    pgErrorHandler(error, res);
   }
 });
 
@@ -155,11 +166,12 @@ router.put("/:numcab/:codigo_articulo", async (req, res) => {
     const total = items.reduce((acc, it) => acc + it.precio * it.cantidad, 0);
 
     res.json({ mensaje: "OK", numcab, items, total });
-
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Error al actualizar cantidad" });
+    console.error("DB Error:", error.code, error.detail); // 👈 logging limpio
+    pgErrorHandler(error, res);
   }
 });
 
 export default router;
+
+

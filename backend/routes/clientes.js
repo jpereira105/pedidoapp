@@ -1,51 +1,33 @@
 // routes/clientes.js
 import express from "express";
 import pool from "../db.js";
+import { pgErrorHandler } from "../pgErrorHandler.js";
+
 const router = express.Router();
 
-router.get("/", async (_, res) => {
-    try {
-        const result = await pool.query("SELECT * FROM clientes ORDER BY id");
-        res.json(result.rows);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
+// Crear cliente
 router.post("/", async (req, res) => {
-    const { nombre, email, telefono } = req.body;
+    const { id_cliente, nombre } = req.body;
     try {
         const result = await pool.query(
-            "INSERT INTO clientes (nombre, email, telefono) VALUES ($1, $2, $3) RETURNING *",
-            [nombre, email, telefono]
+            "INSERT INTO clientes (id_cliente, nombre) VALUES ($1, $2) RETURNING *",
+            [id_cliente, nombre]
         );
         res.json(result.rows[0]);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    } catch (error) {
+        console.error("DB Error:", error.code, error.detail);
+        pgErrorHandler(error, res);
     }
 });
 
-router.put("/:id", async (req, res) => {
-    const { id } = req.params;
-    const { nombre, email, telefono } = req.body;
+// Obtener clientes
+router.get("/", async (req, res) => {
     try {
-        const result = await pool.query(
-            "UPDATE clientes SET nombre=$1, email=$2, telefono=$3 WHERE id=$4 RETURNING *",
-            [nombre, email, telefono, id]
-        );
-        res.json(result.rows[0]);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-router.delete("/:id", async (req, res) => {
-    const { id } = req.params;
-    try {
-        const result = await pool.query("DELETE FROM clientes WHERE id=$1 RETURNING *", [id]);
-        res.json({ mensaje: "Cliente eliminado", cliente: result.rows[0] });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+        const result = await pool.query("SELECT * FROM clientes");
+        res.json(result.rows);
+    } catch (error) {
+        console.error("DB Error:", error.code, error.detail);
+        pgErrorHandler(error, res);
     }
 });
 

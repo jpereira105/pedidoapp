@@ -1,7 +1,7 @@
 // backend/index.js
 import express from "express";
 import cors from "cors";
-import productsRouter from "./routes/products.js";
+import articulosRouter from "./routes/products.js";
 import cartRouter from "./routes/cart.js";
 import clientesRouter from "./routes/clientes.js";
 import pedidosRouter from "./routes/pedidos.js";
@@ -11,7 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 // Rutas
-app.use("/products", productsRouter);
+app.use("/articulos", articulosRouter);
 app.use("/cart", cartRouter);
 app.use("/clientes", clientesRouter);
 app.use("/pedidos", pedidosRouter);

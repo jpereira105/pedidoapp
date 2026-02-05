@@ -1,92 +1,84 @@
 // backend/routes/products.js
 import express from "express";
 import pool from "../db.js";
+import { pgErrorHandler } from "../pgErrorHandler.js";
 
 const router = express.Router();
 
-// Obtener todos los artículos (Read)
-router.get("/", async (req, res, next) => {
+// Crear artículo
+router.post("/", async (req, res) => {
+  const { codigo, detalle, precio, stock } = req.body;
   try {
-    const result = await pool.query("SELECT * FROM articulos ORDER BY CODIGO");
+    const result = await pool.query(
+      "INSERT INTO articulos (codigo, detalle, precio, stock) VALUES ($1, $2, $3, $4) RETURNING *",
+      [codigo, detalle, precio, stock]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("DB Error:", error.code, error.detail);
+    pgErrorHandler(error, res);
+  }
+});
+
+// Listar artículos
+router.get("/", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM articulos");
     res.json(result.rows);
   } catch (error) {
-    next(error); // delega al middleware global
+    console.error("DB Error:", error.code, error.detail);
+    pgErrorHandler(error, res);
   }
 });
 
-// Obtener un artículo por CODIGO (Read)
-router.get("/:CODIGO", async (req, res, next) => {
-  const { CODIGO } = req.params;
-  if (isNaN(CODIGO)) return res.status(400).json({ error: "Código inválido" });
-
+// Obtener artículo por código
+router.get("/:codigo", async (req, res) => {
+  const { codigo } = req.params;
   try {
-    const result = await pool.query("SELECT * FROM articulos WHERE CODIGO = $1", [CODIGO]);
+    const result = await pool.query("SELECT * FROM articulos WHERE codigo=$1", [codigo]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Artículo no encontrado" });
     }
     res.json(result.rows[0]);
   } catch (error) {
-    next(error);
+    console.error("DB Error:", error.code, error.detail);
+    pgErrorHandler(error, res);
   }
 });
 
-// Crear un nuevo artículo (Create)
-router.post("/", async (req, res, next) => {
+// Actualizar artículo
+router.put("/:codigo", async (req, res) => {
+  const { codigo } = req.params;
   const { detalle, precio, stock } = req.body;
-
-  // Validaciones simples
-  if (!detalle || typeof detalle !== "string") {
-    return res.status(400).json({ error: "Detalle inválido" });
-  }
-  if (isNaN(precio) || precio <= 0) {
-    return res.status(400).json({ error: "Precio inválido" });
-  }
-  if (isNaN(stock) || stock < 0) {
-    return res.status(400).json({ error: "Stock inválido" });
-  }
-
   try {
     const result = await pool.query(
-      "INSERT INTO articulos (detalle, precio, stock) VALUES ($1, $2, $3) RETURNING *",
-      [detalle, precio, stock]
-    );
-    res.json(result.rows[0]);
-  } catch (error) {
-    next(error);
-  }
-});
-
-// Actualizar un artículo por CODIGO (Update)
-router.put("/:CODIGO", async (req, res, next) => {
-  const { CODIGO } = req.params;
-  const { detalle, precio, stock } = req.body;
-
-  try {
-    const result = await pool.query(
-      "UPDATE articulos SET detalle=$1, precio=$2, stock=$3 WHERE CODIGO=$4 RETURNING *",
-      [detalle, precio, stock, CODIGO]
+      "UPDATE articulos SET detalle=$1, precio=$2, stock=$3 WHERE codigo=$4 RETURNING *",
+      [detalle, precio, stock, codigo]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Artículo no encontrado" });
     }
     res.json(result.rows[0]);
   } catch (error) {
-    next(error);
+    console.error("DB Error:", error.code, error.detail);
+    pgErrorHandler(error, res);
   }
 });
 
-// Eliminar un artículo por CODIGO (Delete)
-router.delete("/:CODIGO", async (req, res, next) => {
-  const { CODIGO } = req.params;
+// Eliminar artículo
+router.delete("/:codigo", async (req, res) => {
+  const { codigo } = req.params;
   try {
-    const result = await pool.query("DELETE FROM articulos WHERE CODIGO=$1 RETURNING *", [CODIGO]);
+    const result = await pool.query("DELETE FROM articulos WHERE codigo=$1 RETURNING *", [codigo]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: "Artículo no encontrado" });
     }
-    res.json({ mensaje: "Artículo eliminado", articulo: result.rows[0] });
+    res.json({ mensaje: "Producto eliminado", codigo });
   } catch (error) {
-    next(error);
+    console.error("DB Error:", error.code, error.detail);
+    pgErrorHandler(error, res);
   }
 });
 
 export default router;
+
