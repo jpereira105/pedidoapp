@@ -1,4 +1,5 @@
 // backend/routes/cart.js
+// backend/routes/cart.js
 import express from "express";
 import pool from "../db.js";
 import { pgErrorHandler } from "../pgErrorHandler.js";
@@ -173,5 +174,3 @@ router.put("/:numcab/:codigo_articulo", async (req, res) => {
 });
 
 export default router;
-
-
