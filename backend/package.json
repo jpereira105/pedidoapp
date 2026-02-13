@@ -6,7 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js"
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "test:products": "npm test routes/products.test.js",
+    "test:carrito": "npm test routes/cart.test.js",
+    "test:allRoutes": "npm test routes/"
   },
   "dependencies": {
     "cors": "^2.8.5",

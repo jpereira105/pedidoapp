@@ -1,71 +1,174 @@
 // backend/routes/cart.test.js
 import request from "supertest";
-import app from "../index.js";
-import pool from "../db.js";
+import app from "../index.js";   // tu app Express
+import pool from "../db.js";     // conexión a la base
+import { jest } from "@jest/globals";
 
-describe("Carrito de pedidos", () => {
-    const pedidoId = 181;
-    const clienteId = 123;
-    const articuloCodigo = 1;
+jest.setTimeout(30000); // 30 segundos
 
-    // --- Caso normal: agregar ítem ---
-    it("Agrega ítem válido al carrito", async () => {
+// --- Bloque CRUD Carrito ---
+describe("carrito - CRUD", () => {
+    let pedidoId;
+    const clienteId = 1;
+    const articuloCodigo = 2;
+
+    // 🔹 Antes de cada test: limpiar tablas
+    beforeEach(async () => {
+        await pool.query("DELETE FROM detalle_pedido WHERE id_cliente = $1", [clienteId]);
+        await pool.query("DELETE FROM pedidos WHERE id_cliente = $1", [clienteId]);
+    });
+
+    // 🔹 Después de todos los tests: cerrar conexión
+    afterAll(async () => {
+        await pool.end();
+    });
+
+    it("Crea un pedido con items iniciales", async () => {
         const res = await request(app)
             .post("/carrito")
-            .send({ numcab: pedidoId, id_cliente: clienteId, codigo_articulo: articuloCodigo, cantidad: 2 });
+            .send({
+                id_cliente: clienteId,
+                items: [
+                    { codigo_articulo: articuloCodigo, detalle_articulo: "Empanada", cantidad: 2, precio: 500 }
+                ]
+            });
 
         expect(res.statusCode).toBe(200);
-        expect(res.body.codigo_articulo).toBe(articuloCodigo);
+        expect(res.body.mensaje).toBe("Pedido creado");
+        pedidoId = res.body.numcab;
     });
 
-    // --- Caso límite: artículo inexistente ---
-    it("Rechaza ítem con artículo inexistente", async () => {
-        const res = await request(app)
+    it("Agrega ítem válido al carrito", async () => {
+        const pedido = await request(app)
             .post("/carrito")
-            .send({ numcab: pedidoId, id_cliente: clienteId, codigo_articulo: 99, cantidad: 1 });
+            .send({
+                id_cliente: clienteId,
+                items: [
+                    { codigo_articulo: articuloCodigo, detalle_articulo: "Empanada", cantidad: 2, precio: 500 }
+                ]
+            });
+        pedidoId = pedido.body.numcab;
 
-        expect(res.statusCode).toBe(404); // FK inexistente → 404
-        expect(res.body.error).toBe("Referencia inexistente");
-    });
-
-    // --- Caso límite: cliente inexistente ---
-    it("Rechaza ítem con cliente inexistente", async () => {
         const res = await request(app)
-            .post("/carrito")
-            .send({ numcab: pedidoId, id_cliente: 9999, codigo_articulo: articuloCodigo, cantidad: 1 });
+            .post(`/carrito/${pedidoId}/items`)
+            .send({
+                id_cliente: clienteId,
+                codigo_articulo: articuloCodigo,
+                detalle_articulo: "Empanada",
+                cantidad: 2,
+                precio: 500
+            });
 
-        expect(res.statusCode).toBe(404); // FK inexistente → 404
-        expect(res.body.error).toBe("Referencia inexistente");
+        expect(res.statusCode).toBe(200);
+        expect(res.body.items[0].codigo_articulo).toBe(articuloCodigo);
     });
 
-    // --- Caso límite: cantidad inválida ---
+    it("Actualiza cantidad si el ítem ya existe", async () => {
+        const pedido = await request(app)
+            .post("/carrito")
+            .send({
+                id_cliente: clienteId,
+                items: [
+                    { codigo_articulo: articuloCodigo, detalle_articulo: "Empanada", cantidad: 2, precio: 500 }
+                ]
+            });
+        pedidoId = pedido.body.numcab;
+
+        const res = await request(app)
+            .post(`/carrito/${pedidoId}/items`)
+            .send({
+                id_cliente: clienteId,
+                codigo_articulo: articuloCodigo,
+                detalle_articulo: "Empanada",
+                cantidad: 3,
+                precio: 500
+            });
+
+        expect(res.statusCode).toBe(200);
+        const item = res.body.items.find(it => it.codigo_articulo === articuloCodigo);
+        expect(item.cantidad).toBe(5); // 2 iniciales + 3 nuevos
+    });
+});
+
+// --- Bloque validaciones (400) ---
+describe("carrito - validaciones", () => {
+    const clienteId = 1;
+    const pedidoId = 999999;
+
     it("Rechaza ítem con cantidad inválida", async () => {
         const res = await request(app)
-            .post("/carrito")
-            .send({ numcab: pedidoId, id_cliente: clienteId, codigo_articulo: articuloCodigo, cantidad: -5 });
+            .put(`/carrito/${pedidoId}/123`)
+            .send({ id_cliente: clienteId, cantidad: -5 });
 
-        expect(res.statusCode).toBe(400); // validación → 400
-        expect(res.body.error).toBeDefined();
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toBe("Cantidad inválida");
     });
 
-    // --- Caso límite: ítems duplicados ---
-    it("Maneja ítems duplicados correctamente", async () => {
+    it("No permite crear pedido sin items", async () => {
         const res = await request(app)
             .post("/carrito")
-            .send({ numcab: pedidoId, id_cliente: clienteId, codigo_articulo: articuloCodigo, cantidad: 1 });
+            .send({ id_cliente: clienteId, items: [] });
 
-        // Puede devolver 409 (duplicado) o 200 (si tu lógica acumula cantidad)
-        expect([200, 409]).toContain(res.statusCode);
-    });
-
-    // --- Caso límite: vaciar pedido inexistente ---
-    it("Devuelve 404 al vaciar un pedido inexistente", async () => {
-        const res = await request(app).delete("/carrito/999999");
-        expect(res.statusCode).toBe(404);
-        expect(res.body.error).toBe("Pedido no encontrado");
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toBe("No se recibieron items para el pedido");
     });
 });
 
-afterAll(async () => {
-    await pool.end();
+// --- Bloque validaciones (400) ---
+describe("carrito - validaciones", () => {
+    const clienteId = 1;
+    const pedidoId = 999999;
+
+    it("Rechaza ítem con cantidad inválida", async () => {
+        const res = await request(app)
+            .put(`/carrito/${pedidoId}/123`)
+            .send({ id_cliente: clienteId, cantidad: -5 });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toBe("Cantidad inválida");
+    });
+
+    it("No permite crear pedido sin items", async () => {
+        const res = await request(app)
+            .post("/carrito")
+            .send({ id_cliente: clienteId, items: [] });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toBe("No se recibieron items para el pedido");
+    });
 });
+
+
+
+// --- Bloque validaciones (400) ---
+describe("carrito - validaciones", () => {
+    const clienteId = 1;
+    const pedidoId = 999999;
+
+    it("Rechaza ítem con cantidad inválida", async () => {
+        const res = await request(app)
+            .put(`/carrito/${pedidoId}/123`)
+            .send({ id_cliente: clienteId, cantidad: -5 });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toBe("Cantidad inválida");
+    });
+
+    it("No permite crear pedido sin items", async () => {
+        const res = await request(app)
+            .post("/carrito")
+            .send({ id_cliente: clienteId, items: [] });
+
+        expect(res.statusCode).toBe(400);
+        expect(res.body.error).toBe("No se recibieron items para el pedido");
+    });
+});
+
+// --- Teardown de datos de prueba ---
+// afterAll(async () => {
+//    await pool.query("DELETE FROM detalle_pedido WHERE id_cliente = 1");
+//    await pool.query("DELETE FROM pedidos WHERE id_cliente = 1");
+//    await pool.query("DELETE FROM clientes WHERE id_cliente = 1");
+//    await pool.query("DELETE FROM articulos WHERE codigo = 2");
+//    await pool.end();
+// });

@@ -1,8 +1,8 @@
 // backend/routes/cart.js
-// backend/routes/cart.js
 import express from "express";
 import pool from "../db.js";
 import { pgErrorHandler } from "../pgErrorHandler.js";
+import { ERRORS } from "../errors.js";
 
 const router = express.Router();
 
@@ -12,7 +12,7 @@ router.post("/", async (req, res) => {
 
   try {
     if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: "No se recibieron items para el pedido" });
+      return res.status(400).json({ error: ERRORS.NO_ITEMS });
     }
 
     await pool.query("BEGIN");
@@ -21,14 +21,24 @@ router.post("/", async (req, res) => {
       "INSERT INTO pedidos (id_cliente) VALUES ($1) RETURNING numcab",
       [id_cliente]
     );
-    const numcab = pedido.rows[0].numcab;
+    console.log("Pedido insertado:", pedido.rows);
+
+    const numcab = pedido.rows[0]?.numcab;
 
     for (const item of items) {
+      console.log("Insertando item:", item);
       await pool.query(
         `INSERT INTO detalle_pedido 
          (numcab, id_cliente, codigo_articulo, detalle_articulo, cantidad, precio) 
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [numcab, id_cliente, item.codigo_articulo, item.detalle_articulo, item.cantidad, item.precio]
+        [
+          numcab,
+          id_cliente,
+          item.codigo_articulo,
+          item.detalle_articulo,
+          item.cantidad,
+          item.precio,
+        ]
       );
     }
 
@@ -44,7 +54,7 @@ router.post("/", async (req, res) => {
       0
     );
 
-    const carritoItems = detalles.rows.map(row => ({
+    const carritoItems = detalles.rows.map((row) => ({
       codigo_articulo: row.codigo_articulo,
       detalle_articulo: row.detalle_articulo,
       precio: parseFloat(row.precio),
@@ -54,28 +64,45 @@ router.post("/", async (req, res) => {
     res.json({ mensaje: "Pedido creado", numcab, items: carritoItems, total });
   } catch (error) {
     await pool.query("ROLLBACK");
-    console.error("DB Error:", error.code, error.detail); // 👈 logging limpio
+    console.error("Error creando pedido:", error.code, error.detail, error.message);
     pgErrorHandler(error, res);
   }
 });
 
-// Agregar ítem a pedido existente
+// Agregar ítem a un pedido existente
 router.post("/:numcab/items", async (req, res) => {
-  const { numcab } = req.params;
+  const numcab = parseInt(req.params.numcab, 10);
   const { id_cliente, codigo_articulo, detalle_articulo, cantidad, precio } = req.body;
 
   try {
+    const pedido = await pool.query(
+      "SELECT 1 FROM pedidos WHERE numcab=$1 AND id_cliente=$2",
+      [numcab, id_cliente]
+    );
+
+    if (pedido.rowCount === 0) {
+      return res.status(404).json({ error: ERRORS.PEDIDO_NOT_FOUND });
+    }
+
+    // Verificar si el ítem ya existe
     const existing = await pool.query(
-      "SELECT * FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2 AND codigo_articulo=$3",
+      `SELECT cantidad 
+       FROM detalle_pedido 
+       WHERE numcab=$1 AND id_cliente=$2 AND codigo_articulo=$3`,
       [numcab, id_cliente, codigo_articulo]
     );
 
     if (existing.rows.length > 0) {
+      // Ya existe → actualizar cantidad
+      const nuevaCantidad = existing.rows[0].cantidad + cantidad;
       await pool.query(
-        "UPDATE detalle_pedido SET cantidad = cantidad + $1 WHERE numcab=$2 AND id_cliente=$3 AND codigo_articulo=$4",
-        [cantidad, numcab, id_cliente, codigo_articulo]
+        `UPDATE detalle_pedido 
+         SET cantidad=$1 
+         WHERE numcab=$2 AND id_cliente=$3 AND codigo_articulo=$4`,
+        [nuevaCantidad, numcab, id_cliente, codigo_articulo]
       );
     } else {
+      // No existe → insertar nuevo ítem
       await pool.query(
         `INSERT INTO detalle_pedido 
          (numcab, id_cliente, codigo_articulo, detalle_articulo, cantidad, precio) 
@@ -84,14 +111,10 @@ router.post("/:numcab/items", async (req, res) => {
       );
     }
 
+    // Recuperar todos los ítems actualizados
     const detalles = await pool.query(
       "SELECT codigo_articulo, detalle_articulo, precio, cantidad FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2",
       [numcab, id_cliente]
-    );
-
-    const total = detalles.rows.reduce(
-      (acc, it) => acc + Number(it.precio) * Number(it.cantidad),
-      0
     );
 
     const items = detalles.rows.map(row => ({
@@ -101,12 +124,14 @@ router.post("/:numcab/items", async (req, res) => {
       cantidad: parseInt(row.cantidad, 10),
     }));
 
-    res.json({ mensaje: "Pedido actualizado", numcab, items, total });
+    const total = items.reduce((acc, it) => acc + it.precio * it.cantidad, 0);
+
+    res.json({ mensaje: "Ítem agregado/actualizado", numcab, items, total });
   } catch (error) {
-    console.error("DB Error:", error.code, error.detail); // 👈 logging limpio
     pgErrorHandler(error, res);
   }
 });
+
 
 // Vaciar carrito
 router.delete("/:numcab", async (req, res) => {
@@ -120,7 +145,7 @@ router.delete("/:numcab", async (req, res) => {
     );
 
     if (pedido.rowCount === 0) {
-      return res.status(404).json({ error: "Pedido no encontrado" });
+      return res.status(404).json({ error: ERRORS.PEDIDO_NOT_FOUND });
     }
 
     await pool.query("DELETE FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2", [numcab, id_cliente]);
@@ -128,7 +153,6 @@ router.delete("/:numcab", async (req, res) => {
 
     res.json({ mensaje: "Carrito vaciado", numcab: null, items: [], total: 0 });
   } catch (error) {
-    console.error("DB Error:", error.code, error.detail); // 👈 logging limpio
     pgErrorHandler(error, res);
   }
 });
@@ -139,7 +163,7 @@ router.put("/:numcab/:codigo_articulo", async (req, res) => {
   const { id_cliente, cantidad } = req.body;
 
   if (!cantidad || isNaN(cantidad) || cantidad <= 0) {
-    return res.status(400).json({ error: "Cantidad inválida" });
+    return res.status(400).json({ error: ERRORS.INVALID_QUANTITY });
   }
 
   try {
@@ -149,7 +173,7 @@ router.put("/:numcab/:codigo_articulo", async (req, res) => {
     );
 
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Detalle no encontrado" });
+      return res.status(404).json({ error: ERRORS.DETALLE_NOT_FOUND });
     }
 
     const detalles = await pool.query(
@@ -168,7 +192,6 @@ router.put("/:numcab/:codigo_articulo", async (req, res) => {
 
     res.json({ mensaje: "OK", numcab, items, total });
   } catch (error) {
-    console.error("DB Error:", error.code, error.detail); // 👈 logging limpio
     pgErrorHandler(error, res);
   }
 });

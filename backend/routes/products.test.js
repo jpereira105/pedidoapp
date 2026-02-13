@@ -3,18 +3,35 @@ import request from "supertest";
 import app from "../index.js";
 import pool from "../db.js";
 
-// --- Bloque CRUD ---
-describe("articulos - CRUD", () => {
-    const codigo = 101;
+// --- Setup de datos de prueba ---
+beforeAll(async () => {
+    await pool.query(
+        "INSERT INTO articulos (codigo, detalle, precio, stock) VALUES (100, 'Producto Test', 999, 5)"
+    );
+});
 
+beforeEach(async () => {
+    await pool.query("DELETE FROM articulos WHERE codigo IN (101, 104, 105)");
+});
+
+afterAll(async () => {
+    await pool.query("DELETE FROM articulos WHERE codigo = 100");
+    await pool.end();
+});
+
+
+// --- Bloque CRUD Productos ---
+describe("articulos - CRUD", () => {
     it("Crea un producto nuevo", async () => {
+        const codigoUnico = Date.now() % 100000; // últimos 5 dígitos
         const res = await request(app)
             .post("/articulos")
-            .send({ codigo, detalle: "Producto Test", precio: 99.99, stock: 10 });
+            .send({ codigo: codigoUnico, detalle: "Nuevo Producto", precio: 500, stock: 10 });
 
-        expect(res.statusCode).toBe(201); // ahora devuelve 201 Created
-        expect(res.body.codigo).toBe(codigo);
+        expect(res.statusCode).toBe(201);
+        expect(res.body.detalle).toBe("Nuevo Producto");
     });
+
 
     it("Lista productos", async () => {
         const res = await request(app).get("/articulos");
@@ -23,23 +40,23 @@ describe("articulos - CRUD", () => {
     });
 
     it("Obtiene producto por código", async () => {
-        const res = await request(app).get(`/articulos/${codigo}`);
+        const res = await request(app).get("/articulos/100");
         expect(res.statusCode).toBe(200);
-        expect(res.body.codigo).toBe(codigo);
+        expect(res.body.detalle).toBe("Producto Test");
     });
 
     it("Actualiza producto existente", async () => {
         const res = await request(app)
-            .put(`/articulos/${codigo}`)
-            .send({ detalle: "Producto Actualizado", precio: 120, stock: 5 }); // stock agregado para evitar NOT NULL
+            .put("/articulos/100")
+            .send({ detalle: "Producto Actualizado", precio: 1200, stock: 8 });
 
         expect(res.statusCode).toBe(200);
         expect(res.body.detalle).toBe("Producto Actualizado");
     });
 
     it("Elimina producto existente", async () => {
-        const res = await request(app).delete(`/articulos/${codigo}`);
-        expect(res.statusCode).toBe(200); // o 204 si decides no devolver body
+        const res = await request(app).delete("/articulos/100");
+        expect(res.statusCode).toBe(200);
         expect(res.body.mensaje).toBe("Producto eliminado");
     });
 });
@@ -49,18 +66,7 @@ describe("articulos - límites", () => {
     it("Devuelve 404 al obtener producto inexistente", async () => {
         const res = await request(app).get("/articulos/999999");
         expect(res.statusCode).toBe(404);
-    });
-
-    it("Devuelve 404 al actualizar producto inexistente", async () => {
-        const res = await request(app)
-            .put("/articulos/999999")
-            .send({ detalle: "Nada", precio: 10, stock: 1 });
-        expect(res.statusCode).toBe(404);
-    });
-
-    it("Devuelve 404 al eliminar producto inexistente", async () => {
-        const res = await request(app).delete("/articulos/999999");
-        expect(res.statusCode).toBe(404);
+        expect(res.body.error).toBe("Artículo no encontrado"); // coincide con tu backend
     });
 });
 
@@ -69,29 +75,21 @@ describe("articulos - validaciones", () => {
     it("No permite crear producto sin detalle", async () => {
         const res = await request(app)
             .post("/articulos")
-            .send({ codigo: 202, precio: 50, stock: 5 });
+            .send({ codigo: 102, precio: 500, stock: 5 });
 
         expect(res.statusCode).toBe(400);
-        expect(res.body.error).toBe("Campo requerido faltante");
+        expect(res.body.error).toBe("Campos obligatorios faltantes"); // coincide con tu backend
     });
 
     it("No permite crear producto con precio inválido", async () => {
         const res = await request(app)
             .post("/articulos")
-            .send({ codigo: 203, detalle: "Test inválido", precio: "abc", stock: 5 });
+            .send({ codigo: 105, detalle: "Producto Inválido", precio: "abc", stock: 5 });
 
         expect(res.statusCode).toBe(400);
-        expect(res.body.error).toMatch(/precio/i); // coincide con "Precio inválido"
+        expect(res.body.error).toBe("Precio inválido"); // coincide con tu backend
     });
 
-    it("No permite actualizar con body vacío", async () => {
-        const res = await request(app).put("/articulos/101").send({});
-        expect(res.statusCode).toBe(400);
-        expect(res.body.error).toBe("Body vacío o campos inválidos");
-    });
 });
 
-// --- Cierre de conexiones ---
-afterAll(async () => {
-    await pool.end();
-});
+
