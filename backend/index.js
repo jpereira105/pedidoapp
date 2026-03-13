@@ -13,6 +13,7 @@ app.use(express.json());
 // Rutas
 app.use("/articulos", articulosRouter);
 app.use("/carrito", cartRouter);
+app.use("/cart", cartRouter);
 app.use("/clientes", clientesRouter);
 app.use("/pedidos", pedidosRouter);
 

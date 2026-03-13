@@ -7,12 +7,13 @@ import { ERRORS } from "../errors.js";
 const router = express.Router();
 
 // Crear un nuevo pedido con detalle inicial
+// Crear un nuevo pedido con detalle inicial
 router.post("/", async (req, res) => {
   const { id_cliente, items = [] } = req.body;
 
   try {
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: ERRORS.NO_ITEMS });
+    if (!id_cliente) {
+      return res.status(400).json({ error: ERRORS.NO_CLIENTE });
     }
 
     await pool.query("BEGIN");
@@ -21,24 +22,16 @@ router.post("/", async (req, res) => {
       "INSERT INTO pedidos (id_cliente) VALUES ($1) RETURNING numcab",
       [id_cliente]
     );
-    console.log("Pedido insertado:", pedido.rows);
 
     const numcab = pedido.rows[0]?.numcab;
 
+    // Insertar ítems si vienen
     for (const item of items) {
-      console.log("Insertando item:", item);
       await pool.query(
         `INSERT INTO detalle_pedido 
          (numcab, id_cliente, codigo_articulo, detalle_articulo, cantidad, precio) 
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [
-          numcab,
-          id_cliente,
-          item.codigo_articulo,
-          item.detalle_articulo,
-          item.cantidad,
-          item.precio,
-        ]
+        [numcab, id_cliente, item.codigo, item.detalle, item.cantidad, item.precio]
       );
     }
 
@@ -64,15 +57,15 @@ router.post("/", async (req, res) => {
     res.json({ mensaje: "Pedido creado", numcab, items: carritoItems, total });
   } catch (error) {
     await pool.query("ROLLBACK");
-    console.error("Error creando pedido:", error.code, error.detail, error.message);
     pgErrorHandler(error, res);
   }
 });
 
+
 // Agregar ítem a un pedido existente
 router.post("/:numcab/items", async (req, res) => {
   const numcab = parseInt(req.params.numcab, 10);
-  const { id_cliente, codigo_articulo, detalle_articulo, cantidad, precio } = req.body;
+  const { id_cliente, codigo_articulo, detalle, cantidad, precio } = req.body;
 
   try {
     const pedido = await pool.query(
@@ -105,15 +98,15 @@ router.post("/:numcab/items", async (req, res) => {
       // No existe → insertar nuevo ítem
       await pool.query(
         `INSERT INTO detalle_pedido 
-         (numcab, id_cliente, codigo_articulo, detalle_articulo, cantidad, precio) 
+         (numcab, id_cliente, codigo_articulo, detalle, cantidad, precio) 
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [numcab, id_cliente, codigo_articulo, detalle_articulo, cantidad, precio]
+        [numcab, id_cliente, codigo_articulo, detalle, cantidad, precio]
       );
     }
 
     // Recuperar todos los ítems actualizados
     const detalles = await pool.query(
-      "SELECT codigo_articulo, detalle_articulo, precio, cantidad FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2",
+      "SELECT codigo_articulo, detalle, precio, cantidad FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2",
       [numcab, id_cliente]
     );
 
@@ -177,7 +170,7 @@ router.put("/:numcab/:codigo_articulo", async (req, res) => {
     }
 
     const detalles = await pool.query(
-      "SELECT codigo_articulo, detalle_articulo, precio, cantidad FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2",
+      "SELECT codigo_articulo, detalle, precio, cantidad FROM detalle_pedido WHERE numcab=$1 AND id_cliente=$2",
       [numcab, id_cliente]
     );
 
